@@ -3,6 +3,7 @@ package com.example.expenses
 import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.room.Room
@@ -22,6 +23,8 @@ class MainActivity : AppCompatActivity() {
     private var db: ExpensesDatabase? = null
     private var executor = Executors.newSingleThreadExecutor()
     private lateinit var binding: ActivityMainBinding
+    private var expList: MutableList<Expenses> = mutableListOf()
+    private var expTypeList: MutableList<TypesExpenses> = mutableListOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,7 +37,9 @@ class MainActivity : AppCompatActivity() {
         val uuidTypeText = intent.getStringExtra("uuidType")
         converterUUID(uuidText, uuidTypeText)
 
-        selectEditText()
+        getExpenses()
+
+        //selectEditText()
         binding.addButton.setOnClickListener{
             if (pos == -1) {
                 binding.addButton.text = "Добавить"
@@ -107,7 +112,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun selectEditText(){
+    /*private fun selectEditText(){
         if(pos > -1){
             binding.addButton.text = "Изменить"
             binding.delete.visibility = View.VISIBLE
@@ -131,18 +136,59 @@ class MainActivity : AppCompatActivity() {
         }
 
 
+    }*/
+
+    private fun getExpenses() {
+        expList.clear()
+        expTypeList.clear()
+        db?.expensesDAO()?.getAllTypesExpenses()?.observe(this, androidx.lifecycle.Observer {
+            runOnUiThread(Runnable{
+                kotlin.run {
+                    expTypeList.addAll(it)
+                }
+            })
+
+        })
+        db?.expensesDAO()?.getAllExpenses()?.observe(this, androidx.lifecycle.Observer {
+            runOnUiThread(Runnable{
+                kotlin.run {
+                    expList.addAll(it)
+                }
+            })
+        })
     }
 
     private fun addExpenses(name: String, cost: Int, nameType:String)
     {
+        var expTypeContains: Boolean = true
         val uuidType = UUID.randomUUID()
-        executor.execute {
-            db?.expensesDAO()?.addTypeExpenses(
-                TypesExpenses(uuidType, nameType)
-            )
-            db?.expensesDAO()?.addExpenses(
-                Expenses(UUID.randomUUID(), name, cost, uuidType)
-            )
+
+        expTypeList.forEach{
+            if (it.typesExpenses == binding.editTextDesc.text.toString()){
+                expTypeContains = false
+            }
+        }
+        if (expTypeContains) {
+            executor.execute {
+                db?.expensesDAO()?.addTypeExpenses(
+                    TypesExpenses(uuidType, nameType)
+                )
+                db?.expensesDAO()?.addExpenses(
+                    Expenses(UUID.randomUUID(), name, cost, uuidType)
+                )
+            }
+        } else if (!expTypeContains) {
+            Executors.newSingleThreadExecutor().execute {
+                val uuid = db?.expensesDAO()?.getTypeExpensesName(nameType)
+                val exp = uuid?.let { Expenses(uuidType, name, cost, it) }
+                if (exp != null) {
+                    db?.expensesDAO()?.addExpenses(exp)
+                }
+            }
+        }
+        else
+        {
+            Toast.makeText(this, "Уже имеется", Toast.LENGTH_SHORT).show()
         }
     }
 }
